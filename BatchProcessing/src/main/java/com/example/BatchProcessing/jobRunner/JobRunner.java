@@ -22,7 +22,7 @@ public class JobRunner implements CommandLineRunner {
 
         JobParameters jobParameters =
                 new JobParametersBuilder()
-                        .addLong("time", System.currentTimeMillis())
+                        .addLong("time", Long.valueOf(System.currentTimeMillis()))
                         .toJobParameters();
 
         jobLauncher.run(importUserJob, jobParameters);

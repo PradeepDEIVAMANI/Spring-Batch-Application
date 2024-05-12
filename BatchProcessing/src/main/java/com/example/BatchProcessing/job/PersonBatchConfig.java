@@ -3,6 +3,7 @@ package com.example.BatchProcessing.job;
 import com.example.BatchProcessing.Listener.PersonListener;
 import com.example.BatchProcessing.entity.Person;
 import com.example.BatchProcessing.repository.PersonRepository;
+import io.micrometer.common.lang.Nullable;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecutionListener;
 import org.springframework.batch.core.Step;
@@ -14,6 +15,7 @@ import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.file.FlatFileItemReader;
+import org.springframework.batch.item.file.FlatFileParseException;
 import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.separator.DefaultRecordSeparatorPolicy;
@@ -28,22 +30,24 @@ import org.springframework.transaction.PlatformTransactionManager;
 @Configuration
 
 public class PersonBatchConfig {
+
     @Bean
     public FlatFileItemReader<Person> reader() {
-
         FlatFileItemReader<Person> reader = new FlatFileItemReader<>();
         reader.setResource(new ClassPathResource("/people-100.csv"));
-        reader.setLinesToSkip(1);
-        reader.setLineMapper(new DefaultLineMapper<>() {{
-            setLineTokenizer(new DelimitedLineTokenizer() {{
-                setDelimiter(",");
-                setNames("Index", "userId", "firstName", "lastName", "sex", "email", "phone", "dateOfBirth", "jobTitle");
-            }});
+        reader.setLinesToSkip(1); // Skip header line
 
-            setFieldSetMapper(new BeanWrapperFieldSetMapper<>() {{
-                setTargetType(Person.class);
-            }});
+        DefaultLineMapper<Person> lineMapper = new DefaultLineMapper<>();
+        DelimitedLineTokenizer tokenizer = new DelimitedLineTokenizer();
+        tokenizer.setDelimiter(",");
+        tokenizer.setNames("Index", "userId", "firstName", "lastName", "sex", "email", "phone", "dateOfBirth", "jobTitle");
+
+        lineMapper.setLineTokenizer(tokenizer);
+        lineMapper.setFieldSetMapper(new BeanWrapperFieldSetMapper<>() {{
+            setTargetType(Person.class);
         }});
+
+        reader.setLineMapper(lineMapper);
         return reader;
     }
 
@@ -82,6 +86,8 @@ public class PersonBatchConfig {
     public Step step1(JobRepository jobRepository, PlatformTransactionManager transactionManager) {
             return new StepBuilder("step1", jobRepository)
                     .<Person, Person> chunk(5, transactionManager)
+                    .faultTolerant().skip(FlatFileParseException.class)
+                    .skipLimit(2)
                     .reader(reader())
                     .processor(processor())
                     .writer(writer())
