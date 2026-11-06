@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spring Batch CSV Data Pipeline | Enterprise Batch Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="ambient-glow glow-top"></div>
+  <div class="ambient-glow glow-bottom"></div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-badge">
+        <span class="spring-leaf">🍃</span>
+        <div>
+          <span class="brand-title">Spring Batch Pipeline</span>
+          <span class="brand-subtitle">Java 17 · Spring Boot 3.2 · JPA Chunk Engine</span>
+        </div>
+      </div>
+      <div class="pipeline-status-badge" id="globalStatusBadge">
+        <span class="status-indicator ready"></span>
+        <span id="globalStatusText">JOB STATUS: READY</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <a href="https://github.com/PradeepDEIVAMANI/Spring-Batch-Application" target="_blank" rel="noreferrer" class="btn btn-outline header-btn">
+        <span>GitHub Repository</span> ↗
+      </a>
+      <button class="btn btn-primary header-btn" onclick="triggerBatchJob()">
+        <span>▶ Execute Job</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-wrapper">
+
+    <!-- Top Architecture Overview / Pipeline Flow Visualizer -->
+    <section class="section-card architecture-section">
+      <div class="section-title-row">
+        <div>
+          <span class="eyebrow">CHUNK-BASED ARCHITECTURE</span>
+          <h2>ETL Pipeline Lifecycle</h2>
+        </div>
+        <div class="pill-group">
+          <span class="spec-pill">Job: <code>importUserJob</code></span>
+          <span class="spec-pill">Step: <code>step1</code></span>
+          <span class="spec-pill">Reader: <code>FlatFileItemReader</code></span>
+          <span class="spec-pill">Writer: <code>PersonRepository.saveAll</code></span>
+        </div>
+      </div>
+
+      <!-- Pipeline Flow Nodes -->
+      <div class="pipeline-flow-grid">
+        <div class="pipeline-node" id="nodeReader">
+          <div class="node-icon">📄</div>
+          <div class="node-content">
+            <span class="node-step">STEP 1.1 / READ</span>
+            <h4>FlatFileItemReader</h4>
+            <p>Reads delimited CSV lines, skips header row, maps tokens into <code>Person</code> domain model.</p>
+            <div class="node-stat" id="nodeReaderStat">100 records in source</div>
+          </div>
+          <div class="flow-arrow">➔</div>
+        </div>
+
+        <div class="pipeline-node" id="nodeProcessor">
+          <div class="node-icon">⚙️</div>
+          <div class="node-content">
+            <span class="node-step">STEP 1.2 / PROCESS</span>
+            <h4>ItemProcessor</h4>
+            <p>Filters, validates, and normalizes entities. Applies fault-tolerant skip policies.</p>
+            <div class="node-stat" id="nodeProcessorStat">Fault Tolerant (skipLimit: 2)</div>
+          </div>
+          <div class="flow-arrow">➔</div>
+        </div>
+
+        <div class="pipeline-node" id="nodeWriter">
+          <div class="node-icon">💾</div>
+          <div class="node-content">
+            <span class="node-step">STEP 1.3 / WRITE</span>
+            <h4>RepositoryItemWriter</h4>
+            <p>Transactional chunk persistence to database via Spring Data JPA <code>saveAll()</code>.</p>
+            <div class="node-stat" id="nodeWriterStat">Chunk commit size: 5</div>
+          </div>
+          <div class="flow-arrow">➔</div>
+        </div>
+
+        <div class="pipeline-node" id="nodeDatabase">
+          <div class="node-icon">🗄️</div>
+          <div class="node-content">
+            <span class="node-step">STORAGE / PERSISTENCE</span>
+            <h4>Relational Database</h4>
+            <p>ACID-compliant relational store with Spring Batch Job Repository metadata.</p>
+            <div class="node-stat" id="nodeDbStat">Ready for transactions</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Two-Column Interactive Control Deck & Real-Time Console -->
+    <div class="two-col-grid">
+
+      <!-- Left Column: Job Configuration & Live Controls -->
+      <section class="section-card controls-card">
+        <div class="card-header">
+          <div>
+            <h3>Job Controller & Parameters</h3>
+            <p>Tune runtime execution parameters and simulate production batch workloads.</p>
+          </div>
+        </div>
+
+        <div class="control-form">
+          <div class="form-group">
+            <label for="chunkSizeSelect">Chunk Size (Items per Transaction Commit)</label>
+            <div class="input-desc">Determines how many records are read and processed before committing a transaction.</div>
+            <select id="chunkSizeSelect" onchange="updateChunkConfig()">
+              <option value="5" selected>5 items (Default from PersonBatchConfig.java)</option>
+              <option value="10">10 items</option>
+              <option value="25">25 items</option>
+              <option value="50">50 items</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="skipLimitSelect">Fault-Tolerance Skip Limit (FlatFileParseException)</label>
+            <div class="input-desc">Maximum number of invalid or corrupt records to skip before failing the batch.</div>
+            <select id="skipLimitSelect">
+              <option value="2" selected>2 records (Default .skipLimit(2))</option>
+              <option value="5">5 records</option>
+              <option value="10">10 records</option>
+            </select>
+          </div>
+
+          <div class="toggle-group">
+            <div class="toggle-info">
+              <label>Simulate Corrupted CSV Records</label>
+              <p>Injects 2 malformed rows into the input stream to trigger <code>FlatFileParseException</code> skip logic.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="corruptToggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="job-action-buttons">
+            <button class="btn btn-primary btn-block btn-lg" id="btnRunJob" onclick="triggerBatchJob()">
+              ▶ Run Batch Job (people-100.csv)
+            </button>
+            <button class="btn btn-secondary btn-block" onclick="resetPipeline()">
+              🔄 Reset Pipeline & Clear Table
+            </button>
+          </div>
+
+          <!-- Progress Bar -->
+          <div class="progress-container">
+            <div class="progress-labels">
+              <span id="progressStepLabel">Execution Progress</span>
+              <span id="progressPercentage">0%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+            <div class="progress-sub" id="progressSub">Idle · Waiting to launch</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Real-Time Spring Boot Terminal Console -->
+      <section class="section-card console-card">
+        <div class="console-header">
+          <div class="terminal-dots">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+            <span class="terminal-title">Spring Boot Application Terminal Logs</span>
+          </div>
+          <div class="console-actions">
+            <button class="btn-icon" onclick="copyConsoleLogs()" title="Copy Logs">📋 Copy</button>
+            <button class="btn-icon" onclick="clearConsoleLogs()" title="Clear Logs">🗑️ Clear</button>
+          </div>
+        </div>
+        <div class="console-body" id="consoleLogs">
+          <!-- Populated in real-time -->
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Telemetry & Execution Metrics -->
+    <section class="section-card metrics-section">
+      <div class="card-header">
+        <div>
+          <h3>JobExecution & StepExecution Telemetry</h3>
+          <p>Spring Batch metadata captured by <code>PersonListener.java</code> and <code>JobRepository</code>.</p>
+        </div>
+        <span class="instance-tag" id="metricJobInstance">Instance ID: —</span>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-box">
+          <span class="metric-label">JOB STATUS</span>
+          <div class="metric-val" id="metricStatus">READY</div>
+          <span class="metric-meta" id="metricExitCode">ExitCode: NOOP</span>
+        </div>
+
+        <div class="metric-box">
+          <span class="metric-label">READ COUNT</span>
+          <div class="metric-val" id="metricRead">0</div>
+          <span class="metric-meta">Source records read</span>
+        </div>
+
+        <div class="metric-box">
+          <span class="metric-label">WRITE COUNT</span>
+          <div class="metric-val metric-success" id="metricWrite">0</div>
+          <span class="metric-meta">Persisted to repository</span>
+        </div>
+
+        <div class="metric-box">
+          <span class="metric-label">SKIP COUNT</span>
+          <div class="metric-val metric-warning" id="metricSkip">0</div>
+          <span class="metric-meta">Fault-tolerant skips</span>
+        </div>
+
+        <div class="metric-box">
+          <span class="metric-label">COMMIT COUNT</span>
+          <div class="metric-val" id="metricCommit">0</div>
+          <span class="metric-meta">Chunk transactions</span>
+        </div>
+
+        <div class="metric-box">
+          <span class="metric-label">DURATION</span>
+          <div class="metric-val" id="metricDuration">0 ms</div>
+          <span class="metric-meta">Execution time</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Database Table Explorer (Person Entity) -->
+    <section class="section-card database-section">
+      <div class="section-title-row">
+        <div>
+          <span class="eyebrow">DATABASE EXPLORER</span>
+          <h2>JPA Entity Store: <code>Person</code> Table</h2>
+          <p>Real-time contents of the persisted relational database after batch execution.</p>
+        </div>
+        <div class="table-actions">
+          <input type="text" id="tableSearchInput" class="search-input" placeholder="🔍 Search name, email, or job..." oninput="filterTable()">
+          <select id="genderFilter" class="filter-select" onchange="filterTable()">
+            <option value="ALL">All Genders</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+          </select>
+          <button class="btn btn-outline" onclick="exportDatabaseJson()">📥 Export JSON</button>
+          <button class="btn btn-outline" onclick="downloadSourceCsv()">📄 Download Source CSV</button>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>User ID</th>
+              <th>Full Name</th>
+              <th>Sex</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Date of Birth</th>
+              <th>Job Title</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="personTableBody">
+            <!-- Populated via JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <span id="recordCountLabel">Showing 0 records</span>
+      </div>
+    </section>
+
+    <!-- Source Code Architecture Viewer -->
+    <section class="section-card code-section">
+      <div class="card-header">
+        <div>
+          <span class="eyebrow">SPRING BATCH CONFIGURATION</span>
+          <h3>Source Code Deep Dive</h3>
+          <p>Inspect the actual Java configuration implementing chunk processing and skip policies.</p>
+        </div>
+        <div class="code-tabs">
+          <button class="tab-btn active" onclick="switchCodeTab('config')">PersonBatchConfig.java</button>
+          <button class="tab-btn" onclick="switchCodeTab('entity')">Person.java</button>
+          <button class="tab-btn" onclick="switchCodeTab('runner')">JobRunner.java</button>
+          <button class="tab-btn" onclick="switchCodeTab('listener')">PersonListener.java</button>
+        </div>
+      </div>
+
+      <div class="code-display">
+        <pre><code id="codeSnippetContent"><!-- Populated via JS --></code></pre>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-content">
+      <span>Built with Spring Batch 5.1 & Spring Boot 3.2 · Created by Pradeep Deivamani</span>
+      <a href="https://github.com/PradeepDEIVAMANI/Spring-Batch-Application" target="_blank" rel="noreferrer">View Repository on GitHub ↗</a>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
